@@ -1,0 +1,102 @@
+from gi.repository import Gtk
+import cpuStatWindow
+import DiskStatWindow
+import NetStatWindow
+import ProcessStatWindow
+import keylogger
+import subprocess
+
+
+class MainWindow(Gtk.Window):
+
+    def __init__(self):
+        Gtk.Window.__init__(self, title="Linux Task Manager")
+        self.set_border_width(20)
+        self.set_default_size(500, 400)
+        self.set_position(Gtk.WindowPosition.CENTER)
+
+        # Box
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.add(self.box)
+
+        # button
+        self.cpuStatButton = Gtk.Button(label="CPU - Memory Statistics")
+        self.cpuStatButton.connect("clicked", self.button_clicked_cpu)
+        self.box.pack_start(self.cpuStatButton, True, True, 0)
+
+        # button
+        self.diskIOButton = Gtk.Button(label="Disk IO Statistics")
+        self.diskIOButton.connect("clicked", self.button_clicked_disk)
+        self.box.pack_start(self.diskIOButton, True, True, 0)
+
+        # button
+        self.networkStatButton = Gtk.Button(label="Network Statistics")
+        self.networkStatButton.connect("clicked", self.button_clicked_network)
+        self.box.pack_start(self.networkStatButton, True, True, 0)
+
+        # button
+        self.processButton = Gtk.Button(label="Processes Statistics")
+        self.processButton.connect("clicked", self.button_clicked_process)
+        self.box.pack_start(self.processButton, True, True, 0)
+
+        # button
+        self.keyLoggerButton = Gtk.Button(label="Key Logger")
+        self.keyLoggerButton.connect("clicked", self.button_clicked_keylogger)
+        self.box.pack_start(self.keyLoggerButton, True, True, 0)
+
+    def button_clicked_cpu(self, widget):
+
+        self.destroy()
+        Gtk.main_quit()
+        cpu_window = cpuStatWindow.CPUWindow()
+        cpu_window.connect("delete-event", cpu_window.cpu_quit_window)
+        cpu_window.show_all()
+        Gtk.main()
+
+    def button_clicked_disk(self, widget):
+
+        self.destroy()
+        Gtk.main_quit()
+        disk_window = DiskStatWindow.DiskWindow()
+        disk_window.connect("delete-event", disk_window.disk_quit_window)
+        disk_window.show_all()
+        Gtk.main()
+
+    def button_clicked_network(self, widget):
+
+        self.destroy()
+        Gtk.main_quit()
+        network_window = NetStatWindow.NetworkWindow()
+        network_window.connect("delete-event", network_window.net_quit_window)
+        network_window.show_all()
+        Gtk.main()
+
+    def button_clicked_process(self, widget):
+
+        self.destroy()
+        Gtk.main_quit()
+        process_window = ProcessStatWindow.ProcessWindow()
+        process_window.connect("delete-event", process_window.proc_quit_window)
+        process_window.show_all()
+        Gtk.main()
+
+    def button_clicked_keylogger(self, widget):
+
+        print("keylogger on")
+        subprocess.call(['./keylog.sh'])
+        self.destroy()
+        Gtk.main_quit()
+        logger_window = keylogger.KeyLoggerWindow()
+        logger_window.connect("delete-event", logger_window.quit_window)
+        logger_window.show_all()
+        Gtk.main()
+
+
+if __name__ == '__main__':
+    window = MainWindow()
+    window.connect("delete-event", Gtk.main_quit)
+    window.show_all()
+    Gtk.main()
+
+
+

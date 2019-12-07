@@ -1,0 +1,143 @@
+from gi.repository import Gtk, GObject
+from cpuStat import CpuInfo
+from time import sleep
+import threading
+import app
+import diskStat
+import utilities
+
+stop = False
+disk_stat = []
+prev_disk_values = {}
+diskNames = []
+
+
+class DiskWindow(Gtk.Window):
+
+    def __init__(self):
+        Gtk.Window.__init__(self, title="Disk Stats")
+        self.set_border_width(20)
+        self.set_default_size(500, 400)
+        self.set_position(Gtk.WindowPosition.CENTER)
+
+
+        # Layout
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.add(vbox)
+
+        histGrid = utilities.create_hist_sec(self)
+
+        vbox.pack_start(histGrid, True, True, 0)
+        diskLabel = Gtk.Label("DISK Utilization:")
+        vbox.pack_start(diskLabel, True, True, 0)
+
+        diskBox = Gtk.Box()
+        self.add(diskBox)
+        global disk_stat
+
+
+        # initialize prev values
+        self.initialize()
+        sleep(1)
+        disk_stat = self.disk_stat_calculator()
+
+        self.disk_time_list_store = Gtk.ListStore(str, float, float, float, float)
+        for item in disk_stat:
+            self.disk_time_list_store.append(list(item))
+
+        # Treeview
+        self.disk_time_treeview = Gtk.TreeView(self.disk_time_list_store)
+
+        for i, col_title in enumerate(["Field", "Disk Reads", "Disk Writes", "Block Reads", "Block Writes"]):
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(col_title, renderer, text=i)
+            column.set_sort_column_id(i)
+            self.disk_time_treeview.append_column(column)
+
+        diskBox.pack_start(self.disk_time_treeview, True, True, 0)
+        vbox.pack_start(diskBox, True, True, 0)
+
+        self.back_button = Gtk.Button(label="Back")
+        self.back_button.connect("clicked", self.home)
+        vbox.pack_start(self.back_button, True, True, 0)
+
+        GObject.timeout_add_seconds(1, self.refresh_tree_view)
+
+    def calculate_hist_stats(self, widget):
+        print("Yet to implement")
+
+    def initialize(self):
+        global device_stats_prev
+        global diskNames
+
+        disk_obj = diskStat.DiskInfo()
+
+        diskNames = disk_obj.get_all_disk_names(disk_obj.DISK_STAT_FILE)
+        device_stats_prev = disk_obj.get_disk_stats(disk_obj.DISK_STAT_FILE, diskNames)
+
+    def disk_stat_calculator(self):
+
+        global prev_disk_values
+        global diskNames
+
+        global disk_stat
+
+        disk_obj = diskStat.DiskInfo()
+
+        curr_disk_values = disk_obj.get_disk_stats(disk_obj.DISK_STAT_FILE, diskNames)
+
+        disk_stat = disk_obj.calculate_metrics(diskNames, device_stats_prev, curr_disk_values)
+        cpuObj = CpuInfo()
+
+        prev_disk_values = cpuObj.swap_current_cache(curr_disk_values)
+
+        print(disk_stat)
+        return disk_stat
+
+    def refresh_tree_view(self):
+        global disk_stat
+
+        if not stop:
+            self.disk_time_list_store.clear()
+            print("In refresh method")
+            disk_stat = self.disk_stat_calculator()
+            for item in disk_stat:
+                self.disk_time_list_store.append(list(item))
+            self.disk_time_treeview.set_model(self.disk_time_list_store)
+
+        return True
+
+    def disk_quit_window(self, widget, data):
+        global stop
+        global disk_stat
+        stop = True
+
+        disk_stat = []
+        # self.t.join()
+        # self.t.cancel()
+        self.destroy()
+
+        Gtk.main_quit()
+
+    def home(self, widget):
+        global stop
+        global disk_stat
+        stop = True
+
+        disk_stat = []
+        # self.t.join()
+        # self.t.cancel()
+
+        self.destroy()
+        Gtk.main_quit()
+        homeWindow = app.MainWindow()
+        homeWindow.connect("delete-event", Gtk.main_quit)
+        homeWindow.show_all()
+        Gtk.main()
+
+
+if __name__ == '__main__':
+    window = DiskWindow()
+    window.connect("delete-event", window.disk_quit_window)
+    window.show_all()
+    Gtk.main()

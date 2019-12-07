@@ -1,0 +1,183 @@
+import utilities
+from netstat import NetworkStat
+import os
+import time
+from cpuStat import CpuInfo
+import subprocess
+import platform
+
+
+class ProcessStat(object):
+
+    def getAllPIDs(self):
+        proc_files = os.listdir("/proc/")
+        pid_list = []
+
+        for f in proc_files:
+            try:
+                integer = int(f)
+                pid = str(integer)
+                pid_list.append(pid)
+            except ValueError:
+                pass
+        return pid_list
+
+    def read_process_info(self, pid_list):
+        pid_values = {}
+        for pid in pid_list:
+
+            pid_path = "/proc/" + str(pid) + "/stat"
+            pid_stat_content = self.readfile(pid_path)
+            if pid_stat_content is not None:
+                pid_details = pid_stat_content[0].split()
+                utime = int(pid_details[13])
+                stime = int(pid_details[14])
+
+                print("pid= {}".format(pid))
+                print("utime = {}".format(utime))
+                print("stime = {}".format(stime))
+
+                pid_values[(pid, 'utime')] = utime/100
+                pid_values[(pid, 'stime')] = stime/100
+
+                net_stat = NetworkStat()
+                program_name = net_stat.get_program_name_from_pid(pid)
+                pid_values[(pid, 'program_name')] = program_name
+
+                uid, rss, vms = self.read_proc_status(pid)
+                username = net_stat.get_username_from_uid(uid)
+                pid_values[(pid, 'username')] = username
+
+                pid_values[(pid, 'rss')] = rss 
+                pid_values[(pid, 'vir_mem')] = int(pid_details[22])
+
+                pid_values[(pid, 'VmSize')] = vms
+
+        return pid_values
+
+    # Get UID, rss, VmSize
+    def read_proc_status(self, pid):
+        path = "/proc/" + str(pid) + "/status"
+        status_content = self.readfile(path)
+        # 7th row contains the uid, 15th row contains VMrss
+        vms = 0
+        for line in status_content:
+            if 'VmSize:' in line:
+                vms = int(line.split()[1])
+        return status_content[7].split()[1], float(status_content[15].split()[1]), vms
+
+    def calculate_process_virtual_mem_utilization(self, prev_vir_mem, curr_vir_mem):
+        avg_vir_mem = (prev_vir_mem + curr_vir_mem)/2
+        avg_vir_mem_kb = float(avg_vir_mem/1024) #utilities.convert_kbToMb_or_bytesToKb(avg_vir_mem)
+
+        vm_util = avg_vir_mem_kb / 2 ** int(platform.architecture()[0][0:-3])
+
+        return vm_util
+
+
+    def calculate_metrics(self, pid_list, prev_pid_values, curr_pid_values, prev_cpu_values, curr_cpu_values, phy_mem):
+        print("in metrics")
+        all_processes = []
+        for pid in pid_list:
+            try:
+
+                delta_utime = (curr_pid_values[(pid, 'utime')] - prev_pid_values[(pid, 'utime')])
+                delta_stime = (curr_pid_values[(pid, 'stime')] - prev_pid_values[(pid, 'stime')])
+                total_process_time = (delta_stime + delta_utime)
+
+                print(total_process_time)
+
+                # utime, stime, idle time of cpu
+                delta_cpu_utime = (float(curr_cpu_values[0]) - float(prev_cpu_values[0])) * 0.01
+                delta_cpu_stime = (float(curr_cpu_values[1]) - float(prev_cpu_values[1])) * 0.01
+                delta_cpu_idle = (float(curr_cpu_values[2]) - float(prev_cpu_values[2])) * 0.01
+
+                total_cpu_time = (delta_cpu_idle + delta_cpu_stime + delta_cpu_utime)
+
+                print(total_cpu_time)
+
+                process_user_mode_utilization = float(delta_utime / total_cpu_time) * 100
+                process_sys_mode_utilization = float(delta_stime / total_cpu_time) * 100
+                process_overall_utilization = float(total_process_time / total_cpu_time) * 100
+
+
+                # -----------VIRTUAL MEMORY CALCULATION-------------- #
+
+                prev_vir = float(prev_pid_values[(pid, 'vir_mem')])
+                curr_vir = float(curr_pid_values[(pid, 'vir_mem')])
+
+                vir_mem_utilization = self.calculate_process_virtual_mem_utilization(prev_vir, curr_vir)
+
+
+                # -------------Physical MEMORY CALCULATION --------------- #
+
+                prev_rss = int(prev_pid_values[(pid, 'rss')])
+                curr_rss = int(curr_pid_values[(pid, 'rss')])
+
+                # print(prev_rss, curr_rss)
+
+                avg_rss = int((prev_rss + curr_rss)/2)
+                total_mem = phy_mem['MemTotal:']
+                # print(total_mem)
+                rss_mem_utilization = (avg_rss/float(total_mem)) * 100
+
+                # print("phy mem util {}".format(rss_mem_utilization))
+
+                # ------Username ---- #
+                username = prev_pid_values[(pid, 'username')]
+                # print(username)
+
+                # --- Program name ------ #
+                program_name = prev_pid_values[(pid, 'program_name')]
+
+                VmSize = prev_pid_values[(pid, 'VmSize')]
+
+                # print(program_name)
+
+                # str(round(vir_mem_utilization, 2)
+
+                process_tuple = (str(pid), username, program_name, (VmSize),
+                                 (curr_rss),
+                                 (round(process_overall_utilization, 2)),
+                                 (round(process_user_mode_utilization, 2)),
+                                 (round(process_sys_mode_utilization, 2)),
+                                 (round(rss_mem_utilization,2)))
+
+                # print(process_tuple)
+
+                all_processes.append(process_tuple)
+
+            except KeyError:
+                pass
+
+        return all_processes
+
+    def readfile(self, path):
+        try:
+            with open(path, 'r') as file:
+                data = file.readlines()
+                return data
+        except IOError:
+            pass
+            # (Some process might terminate before we read the details, ignore such processes)
+
+
+# if __name__ == '__main__':
+#     process_obj = ProcessStat()
+#     all_pids = process_obj.getAllPIDs()
+#
+#     cpu_obj = CpuInfo()
+#     values = cpu_obj.get_cpu_info()
+#     prev_cpu = values['cpu']
+#
+#     prev_pid = process_obj.read_process_info(all_pids)
+#
+#     mem_info = cpu_obj.get_mem_info()
+#     time.sleep(1)
+#
+#     curr_cpu = cpu_obj.get_cpu_info()['cpu']
+#     curr_pid = process_obj.read_process_info(all_pids)
+#
+#     print(process_obj.calculate_metrics(all_pids, prev_pid, curr_pid, prev_cpu, curr_cpu, mem_info))
+
+

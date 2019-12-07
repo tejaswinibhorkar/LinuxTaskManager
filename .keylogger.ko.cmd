@@ -1,0 +1,1 @@
+cmd_/home/prathamesh/Desktop/monitorApp/keylogger.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/prathamesh/Desktop/monitorApp/keylogger.ko /home/prathamesh/Desktop/monitorApp/keylogger.o /home/prathamesh/Desktop/monitorApp/keylogger.mod.o
